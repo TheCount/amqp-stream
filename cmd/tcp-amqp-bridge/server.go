@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"net"
 	"sync"
@@ -12,9 +13,9 @@ import (
 
 // runServer creates an AMQP streaming server according to the specified
 // serverURL and forwards incoming connections to the specified tcpServerAddr.
-func runServer(tcpServerAddr, serverURL string) {
+func runServer(tcpServerAddr, serverURL string, tlsConfig *tls.Config) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	l, err := stream.Listen(ctx, serverURL, nil)
+	l, err := stream.Listen(ctx, serverURL, tlsConfig)
 	cancel()
 	if err != nil {
 		log.Fatalf("Listen through AMQP: %s", err)

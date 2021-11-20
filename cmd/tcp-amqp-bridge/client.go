@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"net"
 	"sync"
@@ -12,7 +13,7 @@ import (
 
 // runClient creates a TCP server at the specified address and forwards
 // incoming connections to the specified AMQP stream server.
-func runClient(tcpServerAddr, serverURL string) {
+func runClient(tcpServerAddr, serverURL string, tlsConfig *tls.Config) {
 	l, err := net.Listen("tcp", tcpServerAddr)
 	if err != nil {
 		log.Fatalf("Listen through TCP: %s", err)
@@ -27,13 +28,13 @@ func runClient(tcpServerAddr, serverURL string) {
 			log.Printf("Accept TCP temporary error: %s", err)
 			continue
 		}
-		go runClientConn(conn, serverURL)
+		go runClientConn(conn, serverURL, tlsConfig)
 	}
 }
 
 // runClientConn is the goroutine which bridges the given TCP connection
 // to the given AMQP stream server.
-func runClientConn(tcpConn net.Conn, serverURL string) {
+func runClientConn(tcpConn net.Conn, serverURL string, tlsConfig *tls.Config) {
 	var amqpClosed, tcpClosed bool
 	defer func() {
 		if !tcpClosed {
@@ -43,7 +44,7 @@ func runClientConn(tcpConn net.Conn, serverURL string) {
 		}
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	amqpConn, err := stream.Dial(ctx, serverURL, nil)
+	amqpConn, err := stream.Dial(ctx, serverURL, tlsConfig)
 	cancel()
 	if err != nil {
 		log.Printf("Dial AMQP: %s", err)
