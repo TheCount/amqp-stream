@@ -1,11 +1,12 @@
-package stream
+package stream_test
 
 import (
 	"context"
-	"net"
 	"sync"
 	"testing"
 
+	"github.com/TheCount/amqp-stream/stream"
+	sgrpc "github.com/TheCount/amqp-stream/stream/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/examples/helloworld/helloworld"
 )
@@ -26,7 +27,8 @@ func (*grpcServer) SayHello(
 
 // TestGRPC tests gRPC via an AMQP stream
 func TestGRPC(t *testing.T) {
-	l, err := Listen(context.Background(), serverAddr, nil)
+	const serverAddr = "amqp://guest:guest@localhost/?server_queue=grpcserver"
+	l, err := stream.Listen(context.Background(), serverAddr, nil)
 	if err != nil {
 		t.Fatalf("Listen: %s", err)
 	}
@@ -40,11 +42,8 @@ func TestGRPC(t *testing.T) {
 			t.Errorf("Listen: %s", err)
 		}
 	}()
-	cc, err := grpc.Dial("", grpc.WithInsecure(), grpc.WithContextDialer(
-		func(ctx context.Context, target string) (net.Conn, error) {
-			return Dial(ctx, serverAddr, nil)
-		},
-	))
+	cc, err := grpc.Dial("", grpc.WithInsecure(),
+		sgrpc.WithContextDialer(serverAddr, nil))
 	if err != nil {
 		t.Fatalf("Dial: %s", err)
 	}
