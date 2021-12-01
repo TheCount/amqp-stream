@@ -41,6 +41,16 @@ var (
 	argClientURL = commandClient.Arg("serverURL",
 		"AMQP server URL, e. g. amqps://host.name/?server_queue=queue_name").
 		Required().String()
+	commandWebClient = app.Command("webclient",
+		"Bridge HTTP/1.x clients over AMQP to many servers: "+
+			"specify server queue in the "+serverQueueHeader+" header.")
+	argWebClientAddr = commandWebClient.Arg("listenAddr",
+		"address of HTTP/1.x server to create, for clients to connect to").
+		Required().String()
+	argWebClientURL = commandWebClient.Arg("serverURL",
+		"AMQP server URL, without the server_queue parameter, "+
+			"e. g., amqps://host.name").
+		Required().String()
 )
 
 func main() {
@@ -59,6 +69,8 @@ func main() {
 		runServer(*argServerAddr, *argServerURL, tlsConfig)
 	case commandClient.FullCommand():
 		runClient(*argClientAddr, *argClientURL, tlsConfig)
+	case commandWebClient.FullCommand():
+		runWebClient(*argWebClientAddr, *argWebClientURL, tlsConfig)
 	}
 }
 
