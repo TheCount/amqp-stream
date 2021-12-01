@@ -37,9 +37,11 @@ func runServer(tcpServerAddr, serverURL string, tlsConfig *tls.Config) {
 // runServerConn is the goroutine which bridges the given amqpConn to the
 // given existing TCP server.
 func runServerConn(tcpServerAddr string, amqpConn net.Conn) {
-	var amqpClosed, tcpClosed bool
+	var amqpSpec, tcpSpec connSpec
+	amqpSpec.dest = amqpConn
+	tcpSpec.src = amqpConn
 	defer func() {
-		if !amqpClosed {
+		if !amqpSpec.destClosed {
 			if err := amqpConn.Close(); err != nil {
 				log.Printf("Close AMQP connection: %s", err)
 			}
@@ -50,8 +52,10 @@ func runServerConn(tcpServerAddr string, amqpConn net.Conn) {
 		log.Printf("Dial tcp '%s': %s", tcpServerAddr, err)
 		return
 	}
+	amqpSpec.src = tcpConn
+	tcpSpec.dest = tcpConn
 	defer func() {
-		if !tcpClosed {
+		if !tcpSpec.destClosed {
 			if err := tcpConn.Close(); err != nil {
 				log.Printf("Close TCP connection: %s", err)
 			}
@@ -59,7 +63,7 @@ func runServerConn(tcpServerAddr string, amqpConn net.Conn) {
 	}()
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go connectConns(&wg, &amqpClosed, amqpConn, tcpConn)
-	go connectConns(&wg, &tcpClosed, tcpConn, amqpConn)
+	go connectConns(&wg, &amqpSpec)
+	go connectConns(&wg, &tcpSpec)
 	wg.Wait()
 }

@@ -35,9 +35,11 @@ func runClient(tcpServerAddr, serverURL string, tlsConfig *tls.Config) {
 // runClientConn is the goroutine which bridges the given TCP connection
 // to the given AMQP stream server.
 func runClientConn(tcpConn net.Conn, serverURL string, tlsConfig *tls.Config) {
-	var amqpClosed, tcpClosed bool
+	var amqpSpec, tcpSpec connSpec
+	amqpSpec.src = tcpConn
+	tcpSpec.dest = tcpConn
 	defer func() {
-		if !tcpClosed {
+		if !tcpSpec.destClosed {
 			if err := tcpConn.Close(); err != nil {
 				log.Printf("Close TCP connection: %s", err)
 			}
@@ -50,8 +52,10 @@ func runClientConn(tcpConn net.Conn, serverURL string, tlsConfig *tls.Config) {
 		log.Printf("Dial AMQP: %s", err)
 		return
 	}
+	amqpSpec.dest = amqpConn
+	tcpSpec.src = amqpConn
 	defer func() {
-		if !amqpClosed {
+		if !amqpSpec.destClosed {
 			if err := amqpConn.Close(); err != nil {
 				log.Printf("Close AMQP connection: %s", err)
 			}
@@ -59,7 +63,7 @@ func runClientConn(tcpConn net.Conn, serverURL string, tlsConfig *tls.Config) {
 	}()
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go connectConns(&wg, &amqpClosed, amqpConn, tcpConn)
-	go connectConns(&wg, &tcpClosed, tcpConn, amqpConn)
+	go connectConns(&wg, &amqpSpec)
+	go connectConns(&wg, &tcpSpec)
 	wg.Wait()
 }
