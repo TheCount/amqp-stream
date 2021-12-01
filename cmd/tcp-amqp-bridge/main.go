@@ -24,6 +24,10 @@ var (
 	keyPath = app.Flag("key", "Private key file for amqps connection. "+
 		"Must be specified alongside --cert.").
 		Default("").String()
+	downgradeTLS = app.Flag("downgrade-tls",
+		"Normally, this program expects the AMQP server to use TLS 1.3 or better. "+
+			"With this flag, the legacy version TLS 1.2 is also accepted.").
+		Default("false").Bool()
 	commandServer = app.Command("server", "Bridge a TCP server over AMQP")
 	argServerAddr = commandServer.Arg("serverAddr",
 		"address of existing TCP server, e. g. 127.0.0.1:1234").Required().String()
@@ -44,7 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Parse command line: %s", err)
 	}
-	tlsConfig, err := newTLSConfig(*caPath, *certPath, *keyPath)
+	tlsConfig, err := newTLSConfig(*caPath, *certPath, *keyPath, *downgradeTLS)
 	if err != nil {
 		log.Fatalf("TLS config: %s", err)
 	}
@@ -62,7 +66,9 @@ func main() {
 // If all three paths are empty, a nil configuration is returned (no TLS desired
 // or server verification only). If caPath is empty, the host's root CA set is
 // used.
-func newTLSConfig(caPath, certPath, keyPath string) (*tls.Config, error) {
+func newTLSConfig(
+	caPath, certPath, keyPath string, downgradeTLS bool,
+) (*tls.Config, error) {
 	if caPath == "" && certPath == "" && keyPath == "" {
 		return nil, nil
 	}
@@ -73,6 +79,9 @@ func newTLSConfig(caPath, certPath, keyPath string) (*tls.Config, error) {
 
 	result := &tls.Config{
 		MinVersion: tls.VersionTLS13,
+	}
+	if downgradeTLS {
+		result.MinVersion = tls.VersionTLS12
 	}
 
 	if caPath != "" {
