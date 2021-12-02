@@ -2,7 +2,6 @@ package stream
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -14,7 +13,8 @@ import (
 // listener implements a net.Listener for an AMQP stream connection.
 // listener must not be copied once in use.
 type listener struct {
-	// amqpConn is the AMQP client connection for the AMQP stream server.
+	// amqpConn is the AMQP client connection for the AMQP stream server
+	// if this listener is responsible for closing it. Otherwise, it is nil.
 	amqpConn *amqp.Connection
 
 	// lChan is the AMQP channel for consuming connection requests.
@@ -190,8 +190,10 @@ func (l *listener) Close() error {
 	l.closeOnce.Do(func() {
 		close(l.closed)
 		err = l.lChan.Close()
-		if err2 := l.amqpConn.Close(); err2 != nil && err == nil {
-			err = err2
+		if l.amqpConn != nil {
+			if err2 := l.amqpConn.Close(); err2 != nil && err == nil {
+				err = err2
+			}
 		}
 		if err != nil {
 			err = &net.OpError{
@@ -211,14 +213,9 @@ var _ net.Listener = (*listener)(nil)
 // The URL should be a standard amqp(s) URL, which, in addition, must have
 // a server_queue parameter set to the server control
 // queue name.
-// If tlsConfig is nil but a secure connection was requested, an empty
-// config with the server name taken from the URL will be used.
 func Listen(
-	ctx context.Context, urlString string, tlsConfig *tls.Config,
+	ctx context.Context, urlString string, option ...Option,
 ) (l net.Listener, err error) {
-	if ctx == nil {
-		return nil, errors.New("nil context")
-	}
 	addr, err := newAddr(urlString)
 	if err != nil {
 		return nil, err
@@ -227,76 +224,15 @@ func Listen(
 	if err != nil {
 		return nil, err
 	}
-	// establish AMQP connection
-	// FIXME: use DialConfig with net.Dialer.DialContext
-	var amqpConn *amqp.Connection
-	if tlsConfig == nil {
-		amqpConn, err = amqp.Dial(urlString)
-	} else {
-		amqpConn, err = amqp.DialTLS(urlString, tlsConfig)
-	}
+	conn, err := Connect(ctx, urlString, option...)
 	if err != nil {
-		return nil, &net.OpError{
-			Op:   "listen",
-			Net:  addr.Network(),
-			Addr: addr,
-			Err:  fmt.Errorf("dial '%s': %w", urlString, err),
-		}
+		return nil, err
 	}
-	defer func() {
-		if err != nil {
-			amqpConn.Close()
-		}
-	}()
-	// set up connection request queue.
-	lChan, err := amqpConn.Channel()
+	result, err := conn.Listen(ctx, serverQueueName)
 	if err != nil {
-		return nil, &net.OpError{
-			Op:   "listen",
-			Net:  addr.Network(),
-			Addr: addr,
-			Err:  fmt.Errorf("connection request channel: %w", err),
-		}
+		return nil, err
 	}
-	defer func() {
-		if err != nil {
-			lChan.Close()
-		}
-	}()
-	if _, err = lChan.QueueDeclare(serverQueueName,
-		false, // non-durable
-		true,  // auto-delete
-		true,  // exclusive
-		false, // wait for AMQP server confirmation
-		nil,   // no special args
-	); err != nil {
-		return nil, &net.OpError{
-			Op:   "listen",
-			Net:  addr.Network(),
-			Addr: addr,
-			Err:  fmt.Errorf("declare server queue: %w", err),
-		}
-	}
-	deliveryCh, err := lChan.Consume(serverQueueName, serverQueueName,
-		false, // manual ack
-		true,  // exclusive consumer
-		false, // no no-local protection, we don't need it by design
-		false, // wait for AMQP server confirmation
-		nil,   // no special args
-	)
-	if err != nil {
-		return nil, &net.OpError{
-			Op:   "listen",
-			Net:  addr.Network(),
-			Addr: addr,
-			Err:  fmt.Errorf("consume from connection request queue: %w", err),
-		}
-	}
-	return &listener{
-		amqpConn: amqpConn,
-		lChan:    lChan,
-		dChan:    deliveryCh,
-		addr:     addr,
-		closed:   make(signalChan),
-	}, nil
+	underlying := result.(*listener)
+	underlying.amqpConn = conn.amqpConn
+	return result, nil
 }

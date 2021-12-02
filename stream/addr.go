@@ -33,6 +33,12 @@ func (a *addr) serverQueueName() (string, error) {
 	return serverQueueName, nil
 }
 
+// setServerQueueName returns a copy of this address with the given server
+// queue name set.
+func (a *addr) setServerQueueName(name string) *addr {
+	return a.set("server_queue", name)
+}
+
 // local returns a copy of this address with the given local queue name set.
 func (a *addr) local(localQueueName string) *addr {
 	return a.set("local_queue", localQueueName)

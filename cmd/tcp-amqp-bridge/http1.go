@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -22,7 +21,7 @@ const (
 // runWebClient creates an HTTP/1.x server at the specified address and
 // forwards incoming connections to the AMQP stream server specified in the
 // X-AMQP-Server-Queue header in the first request.
-func runWebClient(tcpServerAddr, serverURL string, tlsConfig *tls.Config) {
+func runWebClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
 	u, err := url.Parse(serverURL)
 	if err != nil {
 		log.Fatalf("Parse server URL: %s", err)
@@ -39,7 +38,7 @@ func runWebClient(tcpServerAddr, serverURL string, tlsConfig *tls.Config) {
 			return
 		}
 		serverURL := makeServerURL(u, serverQueue)
-		amqpConn, err := stream.Dial(r.Context(), serverURL, tlsConfig)
+		amqpConn, err := stream.Dial(r.Context(), serverURL, opts...)
 		if err != nil {
 			http.Error(w, "Dial AMQP: "+err.Error(), http.StatusServiceUnavailable)
 			return

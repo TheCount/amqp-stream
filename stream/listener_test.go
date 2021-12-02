@@ -17,7 +17,7 @@ const serverAddr = "amqp://guest:guest@localhost/?server_queue=testserver"
 // TestListen tests listening.
 func TestListen(t *testing.T) {
 	const expectedServerAddr = "amqp://guest@localhost/?server_queue=testserver"
-	l, err := Listen(context.Background(), serverAddr, nil)
+	l, err := Listen(context.Background(), serverAddr, WithInsecure())
 	if err != nil {
 		t.Fatalf("listen: %s", err)
 	}
@@ -31,7 +31,7 @@ func TestListen(t *testing.T) {
 
 // TestAccept tests accepting a connection.
 func TestAccept(t *testing.T) {
-	l, err := Listen(context.Background(), serverAddr, nil)
+	l, err := Listen(context.Background(), serverAddr, WithInsecure())
 	if err != nil {
 		t.Fatalf("listen: %s", err)
 	}
@@ -49,7 +49,7 @@ func TestAccept(t *testing.T) {
 			t.Errorf("close server listener: %s", err)
 		}
 	}()
-	c, err := Dial(context.Background(), serverAddr, nil)
+	c, err := Dial(context.Background(), serverAddr, WithInsecure())
 	if err != nil {
 		t.Fatalf("dial: %s", err)
 	}

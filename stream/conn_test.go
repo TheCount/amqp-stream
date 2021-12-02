@@ -16,7 +16,7 @@ import (
 // TestHello tests sending a simple message between client and server.
 func TestHello(t *testing.T) {
 	var testmsg = []byte("Hello, world!")
-	l, err := Listen(context.Background(), serverAddr, nil)
+	l, err := Listen(context.Background(), serverAddr, WithInsecure())
 	if err != nil {
 		t.Fatalf("listen: %s", err)
 	}
@@ -46,7 +46,7 @@ func TestHello(t *testing.T) {
 			t.Errorf("listener close: %s", err)
 		}
 	}()
-	c, err := Dial(context.Background(), serverAddr, nil)
+	c, err := Dial(context.Background(), serverAddr, WithInsecure())
 	if err != nil {
 		t.Fatalf("dial: %s", err)
 	}

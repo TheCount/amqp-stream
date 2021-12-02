@@ -28,7 +28,8 @@ func (*grpcServer) SayHello(
 // TestGRPC tests gRPC via an AMQP stream
 func TestGRPC(t *testing.T) {
 	const serverAddr = "amqp://guest:guest@localhost/?server_queue=grpcserver"
-	l, err := stream.Listen(context.Background(), serverAddr, nil)
+	l, err := stream.Listen(context.Background(), serverAddr,
+		stream.WithInsecure())
 	if err != nil {
 		t.Fatalf("Listen: %s", err)
 	}
@@ -43,7 +44,7 @@ func TestGRPC(t *testing.T) {
 		}
 	}()
 	cc, err := grpc.Dial("", grpc.WithInsecure(),
-		sgrpc.WithContextDialer(serverAddr, nil))
+		sgrpc.WithContextDialer(serverAddr, stream.WithInsecure()))
 	if err != nil {
 		t.Fatalf("Dial: %s", err)
 	}

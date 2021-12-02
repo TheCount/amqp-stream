@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/TheCount/amqp-stream/stream"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -58,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Parse command line: %s", err)
 	}
-	tlsConfig, err := newTLSConfig(*caPath, *certPath, *keyPath, *downgradeTLS)
+	tlsOpt, err := newTLSOpt(*caPath, *certPath, *keyPath, *downgradeTLS)
 	if err != nil {
 		log.Fatalf("TLS config: %s", err)
 	}
@@ -66,23 +67,22 @@ func main() {
 	default:
 		log.Fatalf("Unsupported command: %s", cmd)
 	case commandServer.FullCommand():
-		runServer(*argServerAddr, *argServerURL, tlsConfig)
+		runServer(*argServerAddr, *argServerURL, tlsOpt)
 	case commandClient.FullCommand():
-		runClient(*argClientAddr, *argClientURL, tlsConfig)
+		runClient(*argClientAddr, *argClientURL, tlsOpt)
 	case commandWebClient.FullCommand():
-		runWebClient(*argWebClientAddr, *argWebClientURL, tlsConfig)
+		runWebClient(*argWebClientAddr, *argWebClientURL, tlsOpt)
 	}
 }
 
-// newTLSConfig creates a new TLS configuration from the given paths.
-// If all three paths are empty, a nil configuration is returned (no TLS desired
-// or server verification only). If caPath is empty, the host's root CA set is
-// used.
-func newTLSConfig(
+// newTLSOpt creates a new TLS configuration option from the given paths.
+// If all three paths are empty, stream.WithInsecure() is returned instead.
+// If caPath is empty, the host's root CA set is used.
+func newTLSOpt(
 	caPath, certPath, keyPath string, downgradeTLS bool,
-) (*tls.Config, error) {
+) (stream.Option, error) {
 	if caPath == "" && certPath == "" && keyPath == "" {
-		return nil, nil
+		return stream.WithInsecure(), nil
 	}
 	if (certPath == "" && keyPath != "") || (certPath != "" && keyPath == "") {
 		return nil,
@@ -115,5 +115,5 @@ func newTLSConfig(
 		result.Certificates = []tls.Certificate{cert}
 	}
 
-	return result, nil
+	return stream.WithTLSConfig(result), nil
 }
