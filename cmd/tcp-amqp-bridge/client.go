@@ -17,6 +17,21 @@ func runClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
 	if err != nil {
 		log.Fatalf("Listen through TCP: %s", err)
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	amqpConn, err := stream.Connect(ctx, serverURL, opts...)
+	cancel()
+	if err != nil {
+		log.Fatalf("Connect to AMQP: %s", err)
+	}
+	defer func() {
+		if err := amqpConn.Close(); err != nil {
+			log.Fatalf("Close AMQP connection: %s", err)
+		}
+	}()
+	serverQueueName, err := amqpConn.Addr().ServerQueueName()
+	if err != nil {
+		log.Fatal(err)
+	}
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -27,13 +42,15 @@ func runClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
 			log.Printf("Accept TCP temporary error: %s", err)
 			continue
 		}
-		go runClientConn(conn, serverURL, opts...)
+		go runClientConn(conn, amqpConn, serverQueueName)
 	}
 }
 
 // runClientConn is the goroutine which bridges the given TCP connection
 // to the given AMQP stream server.
-func runClientConn(tcpConn net.Conn, serverURL string, opts ...stream.Option) {
+func runClientConn(
+	tcpConn net.Conn, amqpConn *stream.Connection, serverQueueName string,
+) {
 	var amqpSpec, tcpSpec connSpec
 	amqpSpec.src = tcpConn
 	tcpSpec.dest = tcpConn
@@ -45,18 +62,18 @@ func runClientConn(tcpConn net.Conn, serverURL string, opts ...stream.Option) {
 		}
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	amqpConn, err := stream.Dial(ctx, serverURL, opts...)
+	amqpStreamConn, err := amqpConn.Dial(ctx, serverQueueName)
 	cancel()
 	if err != nil {
 		log.Printf("Dial AMQP: %s", err)
 		return
 	}
-	amqpSpec.dest = amqpConn
-	tcpSpec.src = amqpConn
+	amqpSpec.dest = amqpStreamConn
+	tcpSpec.src = amqpStreamConn
 	defer func() {
 		if !amqpSpec.destClosed {
-			if err := amqpConn.Close(); err != nil {
-				log.Printf("Close AMQP connection: %s", err)
+			if err := amqpStreamConn.Close(); err != nil {
+				log.Printf("Close AMQP stream: %s", err)
 			}
 		}
 	}()

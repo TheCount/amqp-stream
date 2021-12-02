@@ -1,11 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
@@ -22,13 +22,17 @@ const (
 // forwards incoming connections to the AMQP stream server specified in the
 // X-AMQP-Server-Queue header in the first request.
 func runWebClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
-	u, err := url.Parse(serverURL)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	amqpConn, err := stream.Connect(ctx, serverURL, opts...)
+	cancel()
 	if err != nil {
-		log.Fatalf("Parse server URL: %s", err)
+		log.Fatalf("Connect to AMQP: %s", err)
 	}
-	if _, err = url.ParseQuery(u.RawQuery); err != nil {
-		log.Fatalf("Parse server URL query: %s", err)
-	}
+	defer func() {
+		if err := amqpConn.Close(); err != nil {
+			log.Fatalf("Close AMQP connection: %s", err)
+		}
+	}()
 	err = http.ListenAndServe(tcpServerAddr, http.HandlerFunc(func(
 		w http.ResponseWriter, r *http.Request,
 	) {
@@ -37,19 +41,19 @@ func runWebClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
 			http.Error(w, serverQueueHeader+" missing", http.StatusBadRequest)
 			return
 		}
-		serverURL := makeServerURL(u, serverQueue)
-		amqpConn, err := stream.Dial(r.Context(), serverURL, opts...)
+		amqpStreamConn, err := amqpConn.Dial(r.Context(), serverQueue)
 		if err != nil {
-			http.Error(w, "Dial AMQP: "+err.Error(), http.StatusServiceUnavailable)
+			http.Error(w, "Dial AMQP stream: "+err.Error(),
+				http.StatusServiceUnavailable)
 			return
 		}
 		var amqpSpec, tcpSpec connSpec
-		tcpSpec.src = amqpConn
-		amqpSpec.dest = amqpConn
+		tcpSpec.src = amqpStreamConn
+		amqpSpec.dest = amqpStreamConn
 		defer func() {
 			if !amqpSpec.destClosed {
-				if err := amqpConn.Close(); err != nil {
-					log.Printf("Close AMQP connection: %s", err)
+				if err := amqpStreamConn.Close(); err != nil {
+					log.Printf("Close AMQP stream connection: %s", err)
 				}
 			}
 		}()
@@ -87,7 +91,7 @@ func runWebClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
 			log.Printf("Set TCP deadline: %s", err)
 			return
 		}
-		if _, err := amqpConn.Write(requestBytes); err != nil {
+		if _, err := amqpStreamConn.Write(requestBytes); err != nil {
 			log.Printf("Send initial request: %s", err)
 			return
 		}
@@ -100,16 +104,6 @@ func runWebClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
 	if err != nil {
 		log.Fatalf("Listen through HTTP/1.x: %s", err)
 	}
-}
-
-// makeServerURL returns a string rendition of baseURL, with the specified
-// serverQueue attached. makeServerURL does not alter baseURL.
-func makeServerURL(baseURL *url.URL, serverQueue string) string {
-	urlCopy := *baseURL
-	query := urlCopy.Query()
-	query.Set("server_queue", serverQueue)
-	urlCopy.RawQuery = query.Encode()
-	return urlCopy.String()
 }
 
 // getRequestBytes marshals the specified request to wire format.
