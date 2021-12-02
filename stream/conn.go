@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // conn encapsulates an AMQP stream connection (for either client or server).

@@ -8,7 +8,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // listener implements a net.Listener for an AMQP stream connection.
