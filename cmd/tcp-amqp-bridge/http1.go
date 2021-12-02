@@ -21,7 +21,7 @@ const (
 // runWebClient creates an HTTP/1.x server at the specified address and
 // forwards incoming connections to the AMQP stream server specified in the
 // X-AMQP-Server-Queue header in the first request.
-func runWebClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
+func runWebClient(tcpServerAddr, serverURL string, opts []stream.Option) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	amqpConn, err := stream.Connect(ctx, serverURL, opts...)
 	cancel()

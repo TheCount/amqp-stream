@@ -12,7 +12,7 @@ import (
 
 // runClient creates a TCP server at the specified address and forwards
 // incoming connections to the specified AMQP stream server.
-func runClient(tcpServerAddr, serverURL string, opts ...stream.Option) {
+func runClient(tcpServerAddr, serverURL string, opts []stream.Option) {
 	l, err := net.Listen("tcp", tcpServerAddr)
 	if err != nil {
 		log.Fatalf("Listen through TCP: %s", err)

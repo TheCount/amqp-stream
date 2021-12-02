@@ -29,6 +29,9 @@ var (
 		"Normally, this program expects the AMQP server to use TLS 1.3 or better. "+
 			"With this flag, the legacy version TLS 1.2 is also accepted.").
 		Default("false").Bool()
+	extAuth = app.Flag("ext-auth",
+		"Use external authentication instead of plain authentication").
+		Default("false").Bool()
 	commandServer = app.Command("server", "Bridge a TCP server over AMQP")
 	argServerAddr = commandServer.Arg("serverAddr",
 		"address of existing TCP server, e. g. 127.0.0.1:1234").Required().String()
@@ -63,15 +66,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("TLS config: %s", err)
 	}
+	opts := []stream.Option{tlsOpt}
+	if *extAuth {
+		opts = append(opts, stream.WithExternalAuth())
+	}
 	switch cmd {
 	default:
 		log.Fatalf("Unsupported command: %s", cmd)
 	case commandServer.FullCommand():
-		runServer(*argServerAddr, *argServerURL, tlsOpt)
+		runServer(*argServerAddr, *argServerURL, opts)
 	case commandClient.FullCommand():
-		runClient(*argClientAddr, *argClientURL, tlsOpt)
+		runClient(*argClientAddr, *argClientURL, opts)
 	case commandWebClient.FullCommand():
-		runWebClient(*argWebClientAddr, *argWebClientURL, tlsOpt)
+		runWebClient(*argWebClientAddr, *argWebClientURL, opts)
 	}
 }
 

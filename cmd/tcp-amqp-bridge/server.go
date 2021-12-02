@@ -12,7 +12,7 @@ import (
 
 // runServer creates an AMQP streaming server according to the specified
 // serverURL and forwards incoming connections to the specified tcpServerAddr.
-func runServer(tcpServerAddr, serverURL string, opts ...stream.Option) {
+func runServer(tcpServerAddr, serverURL string, opts []stream.Option) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	l, err := stream.Listen(ctx, serverURL, opts...)
 	cancel()
