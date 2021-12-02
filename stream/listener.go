@@ -24,7 +24,7 @@ type listener struct {
 	dChan <-chan amqp.Delivery
 
 	// addr is the address of this listener.
-	addr *addr
+	addr *Addr
 
 	// closeOnce ensures that the close operations are executed only once.
 	closeOnce sync.Once
@@ -70,7 +70,7 @@ func (l *listener) Accept() (net.Conn, error) {
 		var (
 			errChan               = make(chan error, 1)
 			inChan, outChan       *amqp.Channel
-			localAddr, remoteAddr *addr
+			localAddr, remoteAddr *Addr
 			deliveryCh            <-chan amqp.Delivery
 		)
 		go func() {
@@ -216,11 +216,11 @@ var _ net.Listener = (*listener)(nil)
 func Listen(
 	ctx context.Context, urlString string, option ...Option,
 ) (l net.Listener, err error) {
-	addr, err := newAddr(urlString)
+	addr, err := NewAddr(urlString)
 	if err != nil {
 		return nil, err
 	}
-	serverQueueName, err := addr.serverQueueName()
+	serverQueueName, err := addr.ServerQueueName()
 	if err != nil {
 		return nil, err
 	}

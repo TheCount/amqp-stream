@@ -15,7 +15,12 @@ type Connection struct {
 	amqpConn *amqp.Connection
 
 	// addr is the connection address
-	addr *addr
+	addr *Addr
+}
+
+// Addr returns the address of this connection.
+func (c *Connection) Addr() *Addr {
+	return c.addr
 }
 
 // Close closes this connections. This will cause any remaining AMQP streams to
@@ -246,7 +251,7 @@ func Connect(
 	if ctx == nil {
 		return nil, errors.New("nil context")
 	}
-	amqpAddr, err := newAddr(serverURL)
+	amqpAddr, err := NewAddr(serverURL)
 	if err != nil {
 		return nil, err
 	}

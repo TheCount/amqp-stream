@@ -33,7 +33,7 @@ type conn struct {
 
 	// localAddr and remoteAddr are the local and remote connection address,
 	// respectively.
-	localAddr, remoteAddr *addr
+	localAddr, remoteAddr *Addr
 
 	// rBuf is the current read buffer, in case more data was read than can be
 	// returned.
@@ -311,11 +311,11 @@ func (c *conn) Write(b []byte) (n int, err error) {
 func Dial(
 	ctx context.Context, urlString string, option ...Option,
 ) (nc net.Conn, err error) {
-	addr, err := newAddr(urlString)
+	addr, err := NewAddr(urlString)
 	if err != nil {
 		return nil, err
 	}
-	serverQueueName, err := addr.serverQueueName()
+	serverQueueName, err := addr.ServerQueueName()
 	if err != nil {
 		return nil, err
 	}
