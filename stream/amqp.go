@@ -41,6 +41,14 @@ func (c *Connection) Dial(
 		return nil, errors.New("nil context")
 	}
 	addr := c.addr.setServerQueueName(serverQueueName)
+	if c.amqpConn.IsClosed() {
+		return nil, &net.OpError{
+			Op:   "dial",
+			Net:  addr.Network(),
+			Addr: addr,
+			Err:  net.ErrClosed,
+		}
+	}
 	// set up incoming data queue
 	inChan, err := c.amqpConn.Channel()
 	if err != nil {
@@ -180,6 +188,12 @@ func (c *Connection) Dial(
 	return result, nil
 }
 
+// IsClosed reports whether this connection is closed (either via a call
+// to c.Close or due to some error).
+func (c *Connection) IsClosed() bool {
+	return c.amqpConn.IsClosed()
+}
+
 // Listen creates a new listener on the given server queue using this
 // connection.
 func (c *Connection) Listen(
@@ -189,6 +203,14 @@ func (c *Connection) Listen(
 		return nil, errors.New("nil context")
 	}
 	addr := c.addr.setServerQueueName(serverQueueName)
+	if c.amqpConn.IsClosed() {
+		return nil, &net.OpError{
+			Op:   "listen",
+			Net:  addr.Network(),
+			Addr: addr,
+			Err:  net.ErrClosed,
+		}
+	}
 	// set up connection request queue.
 	lChan, err := c.amqpConn.Channel()
 	if err != nil {
