@@ -13,23 +13,27 @@ import (
 // runServer creates an AMQP streaming server according to the specified
 // serverURL and forwards incoming connections to the specified tcpServerAddr.
 func runServer(tcpServerAddr, serverURL string, opts []stream.Option) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	l, err := stream.Listen(ctx, serverURL, opts...)
-	cancel()
-	if err != nil {
-		log.Fatalf("Listen through AMQP: %s", err)
-	}
 	for {
-		conn, err := l.Accept()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		l, err := stream.Listen(ctx, serverURL, opts...)
+		cancel()
 		if err != nil {
-			nerr, ok := err.(net.Error)
-			if !ok || !nerr.Temporary() {
-				log.Fatalf("Accept AMQP fatal error: %s", err)
-			}
-			log.Printf("Accept AMQP temporary error: %s", err)
-			continue
+			log.Fatalf("Listen through AMQP: %s", err)
 		}
-		go runServerConn(tcpServerAddr, conn)
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				nerr, ok := err.(net.Error)
+				if !ok || !nerr.Temporary() {
+					log.Printf("Accept AMQP fatal error: %s", err)
+					break
+				}
+				log.Printf("Accept AMQP temporary error: %s", err)
+				continue
+			}
+			go runServerConn(tcpServerAddr, conn)
+		}
+		log.Println("Re-establishing AMQP stream listener")
 	}
 }
 

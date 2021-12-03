@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -22,87 +24,99 @@ const (
 // forwards incoming connections to the AMQP stream server specified in the
 // X-AMQP-Server-Queue header in the first request.
 func runWebClient(tcpServerAddr, serverURL string, opts []stream.Option) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	amqpConn, err := stream.Connect(ctx, serverURL, opts...)
-	cancel()
-	if err != nil {
-		log.Fatalf("Connect to AMQP: %s", err)
-	}
-	defer func() {
-		if err := amqpConn.Close(); err != nil {
-			log.Fatalf("Close AMQP connection: %s", err)
-		}
-	}()
-	err = http.ListenAndServe(tcpServerAddr, http.HandlerFunc(func(
-		w http.ResponseWriter, r *http.Request,
-	) {
-		serverQueue := r.Header.Get(serverQueueHeader)
-		if serverQueue == "" {
-			http.Error(w, serverQueueHeader+" missing", http.StatusBadRequest)
-			return
-		}
-		amqpStreamConn, err := amqpConn.Dial(r.Context(), serverQueue)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		amqpConn, err := stream.Connect(ctx, serverURL, opts...)
+		cancel()
 		if err != nil {
-			http.Error(w, "Dial AMQP stream: "+err.Error(),
-				http.StatusServiceUnavailable)
-			return
+			log.Fatalf("Connect to AMQP: %s", err)
 		}
-		var amqpSpec, tcpSpec connSpec
-		tcpSpec.src = amqpStreamConn
-		amqpSpec.dest = amqpStreamConn
-		defer func() {
-			if !amqpSpec.destClosed {
-				if err := amqpStreamConn.Close(); err != nil {
-					log.Printf("Close AMQP stream connection: %s", err)
-				}
+		ctx, cancel = context.WithCancel(context.Background())
+		var lc net.ListenConfig
+		l, err := lc.Listen(ctx, "tcp", tcpServerAddr)
+		if err != nil {
+			log.Fatalf("Listen on '%s': %s", tcpServerAddr, err)
+		}
+		err = http.Serve(l, http.HandlerFunc(func(
+			w http.ResponseWriter, r *http.Request,
+		) {
+			if amqpConn.IsClosed() {
+				http.Error(w, "AMQP connection needs to be reestablished",
+					http.StatusServiceUnavailable)
+				cancel()
+				return
 			}
-		}()
-		hj, ok := w.(http.Hijacker)
-		if !ok {
-			http.Error(w, "Connection hijacking not supported",
-				http.StatusInternalServerError)
-			return
-		}
-		requestBytes, err := getRequestBytes(r)
-		if err != nil {
-			http.Error(w, "Marshal initial request: "+err.Error(),
-				http.StatusInternalServerError)
-		}
-		tcpConn, rwb, err := hj.Hijack()
-		if err != nil {
-			http.Error(w, "Hijack: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		amqpSpec.src = rwb
-		amqpSpec.srcAddr = tcpConn.RemoteAddr()
-		tcpSpec.dest = rwb
-		tcpSpec.destFlusher = rwb
-		tcpSpec.destCloser = tcpConn
-		tcpSpec.destLocalAddr = tcpConn.LocalAddr()
-		tcpSpec.destRemoteAddr = tcpConn.RemoteAddr()
-		defer func() {
-			if !tcpSpec.destClosed {
-				if err := tcpConn.Close(); err != nil {
-					log.Printf("Close TCP connection: %s", err)
-				}
+			serverQueue := r.Header.Get(serverQueueHeader)
+			if serverQueue == "" {
+				http.Error(w, serverQueueHeader+" missing", http.StatusBadRequest)
+				return
 			}
-		}()
-		if err := tcpConn.SetDeadline(time.Time{}); err != nil {
-			log.Printf("Set TCP deadline: %s", err)
-			return
+			amqpStreamConn, err := amqpConn.Dial(r.Context(), serverQueue)
+			if err != nil {
+				http.Error(w, "Dial AMQP stream: "+err.Error(),
+					http.StatusServiceUnavailable)
+				return
+			}
+			var amqpSpec, tcpSpec connSpec
+			tcpSpec.src = amqpStreamConn
+			amqpSpec.dest = amqpStreamConn
+			defer func() {
+				if !amqpSpec.destClosed {
+					if err := amqpStreamConn.Close(); err != nil {
+						log.Printf("Close AMQP stream connection: %s", err)
+					}
+				}
+			}()
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				http.Error(w, "Connection hijacking not supported",
+					http.StatusInternalServerError)
+				return
+			}
+			requestBytes, err := getRequestBytes(r)
+			if err != nil {
+				http.Error(w, "Marshal initial request: "+err.Error(),
+					http.StatusInternalServerError)
+			}
+			tcpConn, rwb, err := hj.Hijack()
+			if err != nil {
+				http.Error(w, "Hijack: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			amqpSpec.src = rwb
+			amqpSpec.srcAddr = tcpConn.RemoteAddr()
+			tcpSpec.dest = rwb
+			tcpSpec.destFlusher = rwb
+			tcpSpec.destCloser = tcpConn
+			tcpSpec.destLocalAddr = tcpConn.LocalAddr()
+			tcpSpec.destRemoteAddr = tcpConn.RemoteAddr()
+			defer func() {
+				if !tcpSpec.destClosed {
+					if err := tcpConn.Close(); err != nil {
+						log.Printf("Close TCP connection: %s", err)
+					}
+				}
+			}()
+			if err := tcpConn.SetDeadline(time.Time{}); err != nil {
+				log.Printf("Set TCP deadline: %s", err)
+				return
+			}
+			if _, err := amqpStreamConn.Write(requestBytes); err != nil {
+				log.Printf("Send initial request: %s", err)
+				return
+			}
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go connectConns(&wg, &amqpSpec)
+			go connectConns(&wg, &tcpSpec)
+			wg.Wait()
+		}))
+		if !errors.Is(err, context.Canceled) {
+			cancel()
+			amqpConn.Close()
+			log.Printf("Listen through HTTP/1.x: %s", err)
 		}
-		if _, err := amqpStreamConn.Write(requestBytes); err != nil {
-			log.Printf("Send initial request: %s", err)
-			return
-		}
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go connectConns(&wg, &amqpSpec)
-		go connectConns(&wg, &tcpSpec)
-		wg.Wait()
-	}))
-	if err != nil {
-		log.Fatalf("Listen through HTTP/1.x: %s", err)
+		log.Println("Re-establishing AMQP connection")
 	}
 }
 

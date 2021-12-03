@@ -17,32 +17,30 @@ func runClient(tcpServerAddr, serverURL string, opts []stream.Option) {
 	if err != nil {
 		log.Fatalf("Listen through TCP: %s", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	amqpConn, err := stream.Connect(ctx, serverURL, opts...)
-	cancel()
-	if err != nil {
-		log.Fatalf("Connect to AMQP: %s", err)
-	}
-	defer func() {
-		if err := amqpConn.Close(); err != nil {
-			log.Fatalf("Close AMQP connection: %s", err)
-		}
-	}()
-	serverQueueName, err := amqpConn.Addr().ServerQueueName()
-	if err != nil {
-		log.Fatal(err)
-	}
 	for {
-		conn, err := l.Accept()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		amqpConn, err := stream.Connect(ctx, serverURL, opts...)
+		cancel()
 		if err != nil {
-			nerr, ok := err.(net.Error)
-			if !ok || !nerr.Temporary() {
-				log.Fatalf("Accept TCP fatal error: %s", err)
-			}
-			log.Printf("Accept TCP temporary error: %s", err)
-			continue
+			log.Fatalf("Connect to AMQP: %s", err)
 		}
-		go runClientConn(conn, amqpConn, serverQueueName)
+		serverQueueName, err := amqpConn.Addr().ServerQueueName()
+		if err != nil {
+			log.Fatal(err)
+		}
+		for !amqpConn.IsClosed() {
+			conn, err := l.Accept()
+			if err != nil {
+				nerr, ok := err.(net.Error)
+				if !ok || !nerr.Temporary() {
+					log.Fatalf("Accept TCP fatal error: %s", err)
+				}
+				log.Printf("Accept TCP temporary error: %s", err)
+				continue
+			}
+			go runClientConn(conn, amqpConn, serverQueueName)
+		}
+		log.Println("Re-establishing AMQP connection")
 	}
 }
 
