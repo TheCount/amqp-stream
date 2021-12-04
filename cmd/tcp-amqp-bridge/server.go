@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/TheCount/amqp-stream/stream"
@@ -40,14 +39,9 @@ func runServer(tcpServerAddr, serverURL string, opts []stream.Option) {
 // runServerConn is the goroutine which bridges the given amqpConn to the
 // given existing TCP server.
 func runServerConn(tcpServerAddr string, amqpConn net.Conn) {
-	var amqpSpec, tcpSpec connSpec
-	amqpSpec.dest = amqpConn
-	tcpSpec.src = amqpConn
 	defer func() {
-		if !amqpSpec.destClosed {
-			if err := amqpConn.Close(); err != nil {
-				log.Printf("Close AMQP connection: %s", err)
-			}
+		if err := amqpConn.Close(); err != nil {
+			log.Printf("Close AMQP connection: %s", err)
 		}
 	}()
 	tcpConn, err := net.Dial("tcp", tcpServerAddr)
@@ -55,18 +49,12 @@ func runServerConn(tcpServerAddr string, amqpConn net.Conn) {
 		log.Printf("Dial tcp '%s': %s", tcpServerAddr, err)
 		return
 	}
-	amqpSpec.src = tcpConn
-	tcpSpec.dest = tcpConn
 	defer func() {
-		if !tcpSpec.destClosed {
-			if err := tcpConn.Close(); err != nil {
-				log.Printf("Close TCP connection: %s", err)
-			}
+		if err := tcpConn.Close(); err != nil {
+			log.Printf("Close TCP connection: %s", err)
 		}
 	}()
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go connectConns(&wg, &amqpSpec)
-	go connectConns(&wg, &tcpSpec)
-	wg.Wait()
+	if err := bridge(tcpConn, amqpConn); err != nil {
+		log.Printf("Error %s", err)
+	}
 }
