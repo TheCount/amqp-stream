@@ -266,6 +266,7 @@ func (c *Connection) Listen(
 // Connect connects to an AMQP server without starting a Listener or dialling
 // to establish an AMQP stream yet. This is useful if multiple servers and/or
 // clients should use the same AMQP connection.
+//
 // The URL should be a standard amqp(s) URL.
 func Connect(
 	ctx context.Context, serverURL string, option ...Option,

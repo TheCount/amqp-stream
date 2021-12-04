@@ -210,6 +210,12 @@ func (l *listener) Close() error {
 var _ net.Listener = (*listener)(nil)
 
 // Listen creates an AMQP stream server listener.
+// It is a combination of calls to Connect and Connect.Listen.
+//
+// The given context only pertains to creation of the listener.
+// Once Listen returns, the context can be safely cancelled without
+// impairing the operation of the returned listener.
+//
 // The URL should be a standard amqp(s) URL, which, in addition, must have
 // a server_queue parameter set to the server control
 // queue name.
